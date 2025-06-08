@@ -1,9 +1,11 @@
-package auth
+package delivery
 
 import (
 	"context"
 	"net/http"
 	"strings"
+
+	"github.com/AlexFox86/auth/internal/pkg/token"
 )
 
 type contextKey string
@@ -22,7 +24,7 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := h.service.ValidateToken(tokenString)
+		claims, err := token.ValidateToken(tokenString, h.service.JwtSecret())
 		if err != nil {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return

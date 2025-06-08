@@ -1,4 +1,4 @@
-package auth
+package delivery
 
 import (
 	"net/http"
@@ -6,21 +6,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AlexFox86/auth/internal/models"
+	"github.com/AlexFox86/auth/internal/service"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/AlexFox86/auth/internal/pkg/token"
+	mockrepo "github.com/AlexFox86/auth/internal/repository/mock"
 )
 
 func TestAuthMiddleware(t *testing.T) {
-	mockRepo := new(MockRepository)
-	service := New(mockRepo, "secret", time.Hour)
+	mockRepo := new(mockrepo.MockRepository)
+	service := service.New(mockRepo, "secret", time.Hour)
 	handler := NewHandler(service)
 
 	// Создаем тестовый токен
-	user := &User{
+	user := &models.User{
 		ID:       uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 		Username: "testuser",
 	}
-	token, _ := service.generateToken(user)
+	token, _ := token.GenerateToken(user, service.JwtSecret(), service.TokenExpiry())
 
 	tests := []struct {
 		name           string

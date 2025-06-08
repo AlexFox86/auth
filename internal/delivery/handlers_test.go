@@ -1,4 +1,4 @@
-package auth
+package delivery
 
 import (
 	"bytes"
@@ -8,14 +8,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AlexFox86/auth/internal/models"
+	"github.com/AlexFox86/auth/internal/pkg/crypto"
+	mockrepo "github.com/AlexFox86/auth/internal/repository/mock"
+	"github.com/AlexFox86/auth/internal/service"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 func TestHandlerRegister(t *testing.T) {
-	mockRepo := new(MockRepository)
-	service := New(mockRepo, "secret", time.Hour)
+	mockRepo := new(mockrepo.MockRepository)
+	service := service.New(mockRepo, "secret", time.Hour)
 	handler := NewHandler(service)
 
 	tests := []struct {
@@ -26,13 +30,13 @@ func TestHandlerRegister(t *testing.T) {
 	}{
 		{
 			name: "successful registration",
-			requestBody: RegisterRequest{
+			requestBody: models.RegisterRequest{
 				Username: "testuser",
 				Email:    "test@example.com",
 				Password: "password123",
 			},
 			mockSetup: func() {
-				mockRepo.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).
+				mockRepo.On("CreateUser", mock.Anything, mock.AnythingOfType("*models.User")).
 					Return(nil).Once()
 			},
 			expectedStatus: http.StatusOK,
@@ -49,7 +53,7 @@ func TestHandlerRegister(t *testing.T) {
 		},
 		{
 			name: "validation error",
-			requestBody: RegisterRequest{
+			requestBody: models.RegisterRequest{
 				Username: "te", // the name is too short
 				Email:    "test@example.com",
 				Password: "password123",
@@ -59,14 +63,14 @@ func TestHandlerRegister(t *testing.T) {
 		},
 		{
 			name: "email already exists",
-			requestBody: RegisterRequest{
+			requestBody: models.RegisterRequest{
 				Username: "testuser",
 				Email:    "exists@example.com",
 				Password: "password123",
 			},
 			mockSetup: func() {
-				mockRepo.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).
-					Return(errEmailExists).Once()
+				mockRepo.On("CreateUser", mock.Anything, mock.AnythingOfType("*models.User")).
+					Return(models.ErrEmailExists).Once()
 			},
 			expectedStatus: http.StatusConflict,
 		},
@@ -90,11 +94,11 @@ func TestHandlerRegister(t *testing.T) {
 }
 
 func TestHandlerLogin(t *testing.T) {
-	mockRepo := new(MockRepository)
-	service := New(mockRepo, "secret", time.Hour)
+	mockRepo := new(mockrepo.MockRepository)
+	service := service.New(mockRepo, "secret", time.Hour)
 	handler := NewHandler(service)
 
-	hashedPassword, _ := HashPassword("password123")
+	hashedPassword, _ := crypto.HashPassword("password123")
 
 	tests := []struct {
 		name           string
@@ -104,13 +108,13 @@ func TestHandlerLogin(t *testing.T) {
 	}{
 		{
 			name: "successful login",
-			requestBody: LoginRequest{
+			requestBody: models.LoginRequest{
 				Email:    "test@example.com",
 				Password: "password123",
 			},
 			mockSetup: func() {
 				mockRepo.On("GetUserByEmail", mock.Anything, "test@example.com").
-					Return(&User{
+					Return(&models.User{
 						ID:       uuid.New(),
 						Username: "testuser",
 						Email:    "test@example.com",
@@ -121,13 +125,13 @@ func TestHandlerLogin(t *testing.T) {
 		},
 		{
 			name: "invalid credentials",
-			requestBody: LoginRequest{
+			requestBody: models.LoginRequest{
 				Email:    "test@example.com",
 				Password: "wrongpassword",
 			},
 			mockSetup: func() {
 				mockRepo.On("GetUserByEmail", mock.Anything, "test@example.com").
-					Return(&User{
+					Return(&models.User{
 						ID:       uuid.New(),
 						Username: "testuser",
 						Email:    "test@example.com",
@@ -138,13 +142,13 @@ func TestHandlerLogin(t *testing.T) {
 		},
 		{
 			name: "user not found",
-			requestBody: LoginRequest{
+			requestBody: models.LoginRequest{
 				Email:    "notfound@example.com",
 				Password: "password123",
 			},
 			mockSetup: func() {
 				mockRepo.On("GetUserByEmail", mock.Anything, "notfound@example.com").
-					Return(nil, errUserNotFound)
+					Return(nil, models.ErrUserNotFound)
 			},
 			expectedStatus: http.StatusUnauthorized,
 		},

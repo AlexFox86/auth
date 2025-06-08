@@ -1,4 +1,4 @@
-package auth
+package postgres
 
 import (
 	"context"
@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/AlexFox86/auth/internal/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
 // Repository interface for working with storage
 type Repository interface {
-	CreateUser(ctx context.Context, user *User) error
-	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	CreateUser(ctx context.Context, user *models.User) error
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 }
 
 // PgRepository the structure for working with PostgreSQL database
@@ -29,7 +30,7 @@ func NewPgRepository(db *sqlx.DB) *PgRepository {
 }
 
 // CreateUser creates a new user
-func (r *PgRepository) CreateUser(ctx context.Context, user *User) error {
+func (r *PgRepository) CreateUser(ctx context.Context, user *models.User) error {
 	user.ID = uuid.New()
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = user.CreatedAt
@@ -46,14 +47,14 @@ func (r *PgRepository) CreateUser(ctx context.Context, user *User) error {
 }
 
 // GetUserByEmail gets the user by email
-func (r *PgRepository) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	var user User
+func (r *PgRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	var user models.User
 	query := `SELECT * FROM users WHERE email = $1`
 
 	err := r.db.GetContext(ctx, &user, query, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errUserNotFound
+			return nil, models.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}

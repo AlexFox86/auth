@@ -1,58 +1,45 @@
-package auth
+package service
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/AlexFox86/auth/internal/models"
+	"github.com/AlexFox86/auth/internal/pkg/crypto"
+	"github.com/AlexFox86/auth/internal/pkg/token"
 	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	mockrepo "github.com/AlexFox86/auth/internal/repository/mock"
 )
-
-// MockRepository - mock repository for testing
-type MockRepository struct {
-	mock.Mock
-}
-
-func (m *MockRepository) CreateUser(ctx context.Context, user *User) error {
-	args := m.Called(ctx, user)
-	return args.Error(0)
-}
-
-func (m *MockRepository) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	args := m.Called(ctx, email)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*User), args.Error(1)
-}
 
 func TestServiceRegister(t *testing.T) {
 	tests := []struct {
 		name        string
-		req         *RegisterRequest
-		mockSetup   func(*MockRepository)
-		expected    *User
+		req         *models.RegisterRequest
+		mockSetup   func(*mockrepo.MockRepository)
+		expected    *models.User
 		expectedErr error
 	}{
 		{
 			name: "successful registration",
-			req: &RegisterRequest{
+			req: &models.RegisterRequest{
 				Username: "testuser",
 				Email:    "test@example.com",
 				Password: "password123",
 			},
-			mockSetup: func(mr *MockRepository) {
-				mr.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).
+			mockSetup: func(mr *mockrepo.MockRepository) {
+				mr.On("CreateUser", mock.Anything, mock.AnythingOfType("*models.User")).
 					Return(nil).
 					Run(func(args mock.Arguments) {
-						user := args.Get(1).(*User)
+						user := args.Get(1).(*models.User)
 						user.ID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 					})
 			},
-			expected: &User{
+			expected: &models.User{
 				ID:       uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 				Username: "testuser",
 				Email:    "test@example.com",
@@ -61,23 +48,23 @@ func TestServiceRegister(t *testing.T) {
 		},
 		{
 			name: "email already exists",
-			req: &RegisterRequest{
+			req: &models.RegisterRequest{
 				Username: "testuser",
 				Email:    "exists@example.com",
 				Password: "password123",
 			},
-			mockSetup: func(mr *MockRepository) {
-				mr.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).
-					Return(errEmailExists)
+			mockSetup: func(mr *mockrepo.MockRepository) {
+				mr.On("CreateUser", mock.Anything, mock.AnythingOfType("*models.User")).
+					Return(models.ErrEmailExists)
 			},
 			expected:    nil,
-			expectedErr: errEmailExists,
+			expectedErr: models.ErrEmailExists,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockRepo := new(MockRepository)
+			mockRepo := new(mockrepo.MockRepository)
 			tt.mockSetup(mockRepo)
 
 			service := New(mockRepo, "secret", time.Hour)
@@ -100,32 +87,32 @@ func TestServiceRegister(t *testing.T) {
 }
 
 func TestServiceLogin(t *testing.T) {
-	hashedPassword, _ := HashPassword("password123")
+	hashedPassword, _ := crypto.HashPassword("password123")
 
 	tests := []struct {
 		name        string
-		req         *LoginRequest
-		mockSetup   func(*MockRepository)
-		expected    *Response
+		req         *models.LoginRequest
+		mockSetup   func(*mockrepo.MockRepository)
+		expected    *models.Response
 		expectedErr error
 	}{
 		{
 			name: "successful login",
-			req: &LoginRequest{
+			req: &models.LoginRequest{
 				Email:    "test@example.com",
 				Password: "password123",
 			},
-			mockSetup: func(mr *MockRepository) {
+			mockSetup: func(mr *mockrepo.MockRepository) {
 				mr.On("GetUserByEmail", mock.Anything, "test@example.com").
-					Return(&User{
+					Return(&models.User{
 						ID:       uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 						Username: "testuser",
 						Email:    "test@example.com",
 						Password: hashedPassword,
 					}, nil)
 			},
-			expected: &Response{
-				User: User{
+			expected: &models.Response{
+				User: models.User{
 					ID:       uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Username: "testuser",
 					Email:    "test@example.com",
@@ -136,26 +123,26 @@ func TestServiceLogin(t *testing.T) {
 		},
 		{
 			name: "user not found",
-			req: &LoginRequest{
+			req: &models.LoginRequest{
 				Email:    "notfound@example.com",
 				Password: "password123",
 			},
-			mockSetup: func(mr *MockRepository) {
+			mockSetup: func(mr *mockrepo.MockRepository) {
 				mr.On("GetUserByEmail", mock.Anything, "notfound@example.com").
-					Return(nil, errUserNotFound)
+					Return(nil, models.ErrUserNotFound)
 			},
 			expected:    nil,
-			expectedErr: errInvalidCredentials,
+			expectedErr: models.ErrInvalidCredentials,
 		},
 		{
 			name: "wrong password",
-			req: &LoginRequest{
+			req: &models.LoginRequest{
 				Email:    "test@example.com",
 				Password: "wrongpassword",
 			},
-			mockSetup: func(mr *MockRepository) {
+			mockSetup: func(mr *mockrepo.MockRepository) {
 				mr.On("GetUserByEmail", mock.Anything, "test@example.com").
-					Return(&User{
+					Return(&models.User{
 						ID:       uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 						Username: "testuser",
 						Email:    "test@example.com",
@@ -163,13 +150,13 @@ func TestServiceLogin(t *testing.T) {
 					}, nil)
 			},
 			expected:    nil,
-			expectedErr: errInvalidCredentials,
+			expectedErr: models.ErrInvalidCredentials,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockRepo := new(MockRepository)
+			mockRepo := new(mockrepo.MockRepository)
 			tt.mockSetup(mockRepo)
 
 			service := New(mockRepo, "secret", time.Hour)
@@ -195,33 +182,33 @@ func TestServiceValidateToken(t *testing.T) {
 	service := New(nil, "secret", time.Hour)
 
 	t.Run("valid token", func(t *testing.T) {
-		user := &User{
+		user := &models.User{
 			ID:       uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 			Username: "testuser",
 		}
-		token, err := service.generateToken(user)
+		tokenString, err := token.GenerateToken(user, service.jwtSecret, service.tokenExpiry)
 		assert.NoError(t, err)
 
-		claims, err := service.ValidateToken(token)
+		claims, err := token.ValidateToken(tokenString, service.jwtSecret)
 		assert.NoError(t, err)
 		assert.Equal(t, user.ID.String(), claims["sub"])
 		assert.Equal(t, user.Username, claims["username"])
 	})
 
 	t.Run("invalid token", func(t *testing.T) {
-		claims, err := service.ValidateToken("invalid.token.string")
+		claims, err := token.ValidateToken("invalid.token.string", service.jwtSecret)
 		assert.Error(t, err)
 		assert.Nil(t, claims)
 	})
 
 	t.Run("wrong signing method", func(t *testing.T) {
 		// Creating a token with an incorrect signature method
-		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		testToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 			"sub": "123",
 		})
-		tokenString, _ := token.SignedString([]byte("key"))
+		tokenString, _ := testToken.SignedString([]byte("key"))
 
-		claims, err := service.ValidateToken(tokenString)
+		claims, err := token.ValidateToken(tokenString, service.jwtSecret)
 		assert.Error(t, err)
 		assert.Nil(t, claims)
 	})
